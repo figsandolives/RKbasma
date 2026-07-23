@@ -17,6 +17,7 @@ let currentPin = "";
 let publishedSchedules = [];
 let fingerprintPlaces = [];
 let otpEmployee = null;
+let otpDeliveryPhone = "";
 let pendingPunchType = null;
 let scanStream = null;
 let scanFrame = null;
@@ -65,6 +66,17 @@ function findEmployeeByPhone(rawPhone, employees) {
   const short = entered.slice(-8);
   return employees.find(item => phoneValues(item).some(phone => phone === entered || phone.slice(-8) === short));
 }
+function whatsappPhoneFor(record, enteredPhone, selectedDial = "") {
+  const entered = normalPhone(enteredPhone);
+  const dialCode = normalPhone(selectedDial);
+  const short = entered.slice(-8);
+  const phones = [record.primaryPhone, ...(record.alternatePhones || [])]
+    .map(value => ({ phone: normalPhone(value?.phone || value), dialCode: normalPhone(value?.dialCode || "") }))
+    .filter(value => value.phone);
+  const matched = phones.find(value => value.phone === entered || value.phone.slice(-8) === short) || phones[0];
+  const nationalPhone = matched?.phone || (dialCode && entered.startsWith(dialCode) ? entered.slice(dialCode.length) : entered);
+  return `${dialCode || matched?.dialCode || ""}${nationalPhone}`.replace(/^00/, "");
+}
 
 async function start() {
   try { await signInAnonymously(auth); }
@@ -87,6 +99,7 @@ onAuthStateChanged(auth, async user => {
 $("#phone-form").onsubmit = requestOtp;
 $("#otp-form").onsubmit = verifyOtp;
 $("#back-to-phone").onclick = () => { $("#otp-stage").classList.add("hidden"); $("#phone-stage").classList.remove("hidden"); $("#pin-message").textContent = ""; };
+$("#employee-dial").innerHTML = dialOptions("+965");
 bindNumeric($("#phone-form"));
 bindNumeric($("#otp-form"));
 
@@ -103,12 +116,13 @@ async function requestOtp(event) {
     const list = Object.entries(snap.val() || {}).map(([id, value]) => ({ id, ...value }));
     otpEmployee = findEmployeeByPhone(phone, list);
     if (!otpEmployee) throw new Error("رقم الهاتف غير مرتبط بملف موظف.");
+    otpDeliveryPhone = whatsappPhoneFor(otpEmployee, phone, $("#employee-dial").value);
     const url = CONFIG.n8n?.employeeLoginOtpUrl || CONFIG.n8n?.loginOtpUrl;
     if (!url) throw new Error("لم يتم إعداد خدمة إرسال رمز واتساب.");
-    const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone, email: "", purpose: "hrms_login", portal: "employee", employeeId: otpEmployee.id }) });
+    const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone: otpDeliveryPhone, email: "", purpose: "hrms_login", portal: "employee", employeeId: otpEmployee.id }) });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || data.ok === false) throw new Error(data.message || "تعذر إرسال رمز واتساب.");
-    $("#otp-phone").textContent = `أرسلنا رمز التحقق إلى رقم ${phone.slice(-4).padStart(phone.length, "•")}`;
+    $("#otp-phone").textContent = `أرسلنا رمز التحقق إلى رقم ${otpDeliveryPhone.slice(-4).padStart(otpDeliveryPhone.length, "•")}`;
     $("#phone-stage").classList.add("hidden");
     $("#otp-stage").classList.remove("hidden");
     $("#otp-code").focus();
@@ -129,7 +143,7 @@ async function verifyOtp(event) {
   try {
     const url = CONFIG.n8n?.employeeVerifyOtpUrl || CONFIG.n8n?.verifyOtpUrl;
     if (!url) throw new Error("لم يتم إعداد خدمة التحقق من واتساب.");
-    const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone, code, purpose: "hrms_login", portal: "employee", employeeId: otpEmployee.id }) });
+    const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone: otpDeliveryPhone || phone, code, purpose: "hrms_login", portal: "employee", employeeId: otpEmployee.id }) });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) throw new Error(data.message || "رمز التحقق غير صحيح.");
     employee = otpEmployee;

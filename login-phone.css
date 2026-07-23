@@ -1,0 +1,5 @@
+.login-phone-row{display:grid;grid-template-columns:155px 1fr;direction:ltr;overflow:hidden;border:1px solid var(--line);border-radius:16px;background:#f8fbfe}
+.pin-card .login-phone-row input{min-width:0;border:0;border-radius:0;background:transparent}
+.login-phone-row select{min-width:0;border:0;border-left:1px solid var(--line);background:#edf7ff;color:var(--navy);direction:rtl;padding:0 10px;font-size:12px;font-weight:800;outline:0}
+.login-phone-row:focus-within{border-color:var(--blue);box-shadow:0 0 0 4px rgba(8,120,232,.1)}
+@media(max-width:420px){.login-phone-row{grid-template-columns:128px 1fr}.login-phone-row select{font-size:11px;padding:0 6px}}
