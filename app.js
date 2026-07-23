@@ -105,7 +105,7 @@ async function requestOtp(event) {
     if (!otpEmployee) throw new Error("رقم الهاتف غير مرتبط بملف موظف.");
     const url = CONFIG.n8n?.employeeLoginOtpUrl || CONFIG.n8n?.loginOtpUrl;
     if (!url) throw new Error("لم يتم إعداد خدمة إرسال رمز واتساب.");
-    const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone, purpose: "employee_attendance_login", employeeId: otpEmployee.id }) });
+    const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone, email: "", purpose: "hrms_login", portal: "employee", employeeId: otpEmployee.id }) });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || data.ok === false) throw new Error(data.message || "تعذر إرسال رمز واتساب.");
     $("#otp-phone").textContent = `أرسلنا رمز التحقق إلى رقم ${phone.slice(-4).padStart(phone.length, "•")}`;
@@ -129,7 +129,7 @@ async function verifyOtp(event) {
   try {
     const url = CONFIG.n8n?.employeeVerifyOtpUrl || CONFIG.n8n?.verifyOtpUrl;
     if (!url) throw new Error("لم يتم إعداد خدمة التحقق من واتساب.");
-    const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone, code, purpose: "employee_attendance_login", employeeId: otpEmployee.id }) });
+    const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone, code, purpose: "hrms_login", portal: "employee", employeeId: otpEmployee.id }) });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) throw new Error(data.message || "رمز التحقق غير صحيح.");
     employee = otpEmployee;
