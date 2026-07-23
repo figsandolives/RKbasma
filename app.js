@@ -1,4 +1,4 @@
-import { CONFIG } from "./config.js";
+import { CONFIG } from "./config.js?v=20260723-otp";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
 import { getDatabase, ref, get, set, push, update, remove, runTransaction } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-database.js";
@@ -103,7 +103,7 @@ async function requestOtp(event) {
     const list = Object.entries(snap.val() || {}).map(([id, value]) => ({ id, ...value }));
     otpEmployee = findEmployeeByPhone(phone, list);
     if (!otpEmployee) throw new Error("رقم الهاتف غير مرتبط بملف موظف.");
-    const url = CONFIG.n8n.employeeLoginOtpUrl || CONFIG.n8n.loginOtpUrl;
+    const url = CONFIG.n8n?.employeeLoginOtpUrl || CONFIG.n8n?.loginOtpUrl;
     if (!url) throw new Error("لم يتم إعداد خدمة إرسال رمز واتساب.");
     const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone, purpose: "employee_attendance_login", employeeId: otpEmployee.id }) });
     const data = await response.json().catch(() => ({}));
@@ -127,7 +127,7 @@ async function verifyOtp(event) {
   button.disabled = true;
   message.textContent = "جاري التحقق...";
   try {
-    const url = CONFIG.n8n.employeeVerifyOtpUrl || CONFIG.n8n.verifyOtpUrl;
+    const url = CONFIG.n8n?.employeeVerifyOtpUrl || CONFIG.n8n?.verifyOtpUrl;
     if (!url) throw new Error("لم يتم إعداد خدمة التحقق من واتساب.");
     const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone, code, purpose: "employee_attendance_login", employeeId: otpEmployee.id }) });
     const data = await response.json().catch(() => ({}));
