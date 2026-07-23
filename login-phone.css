@@ -3,3 +3,4 @@
 .login-phone-row select{min-width:0;border:0;border-left:1px solid var(--line);background:#edf7ff;color:var(--navy);direction:rtl;padding:0 10px;font-size:12px;font-weight:800;outline:0}
 .login-phone-row:focus-within{border-color:var(--blue);box-shadow:0 0 0 4px rgba(8,120,232,.1)}
 @media(max-width:420px){.login-phone-row{grid-template-columns:128px 1fr}.login-phone-row select{font-size:11px;padding:0 6px}}
+.pin-card .otp-resend{width:100%;margin-top:12px;background:#fff0f2;color:#c43f4e;border:1px solid #f2b7bf;box-shadow:none}.pin-card .otp-resend:disabled{opacity:.8;cursor:not-allowed}.pin-card .otp-resend.ready{background:#d54c58;color:#fff;border-color:#d54c58;box-shadow:0 8px 18px rgba(213,72,88,.2)}.otp-resend-hint{display:block;min-height:20px;margin:8px 0 2px;color:#9b6670;font-size:11px}

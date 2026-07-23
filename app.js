@@ -18,6 +18,8 @@ let publishedSchedules = [];
 let fingerprintPlaces = [];
 let otpEmployee = null;
 let otpDeliveryPhone = "";
+let otpResendAvailableAt = 0;
+let otpResendTimer = null;
 let pendingPunchType = null;
 let scanStream = null;
 let scanFrame = null;
@@ -77,6 +79,46 @@ function whatsappPhoneFor(record, enteredPhone, selectedDial = "") {
   const nationalPhone = matched?.phone || (dialCode && entered.startsWith(dialCode) ? entered.slice(dialCode.length) : entered);
   return `${dialCode || matched?.dialCode || ""}${nationalPhone}`.replace(/^00/, "");
 }
+function clearOtpResendCountdown() {
+  if (otpResendTimer) { clearInterval(otpResendTimer); otpResendTimer = null; }
+}
+function updateOtpResendCountdown() {
+  const button = $("#resend-employee-otp"), hint = $("#employee-otp-resend-countdown");
+  if (!button || !hint) { clearOtpResendCountdown(); return; }
+  const seconds = Math.max(0, Math.ceil((otpResendAvailableAt - Date.now()) / 1000));
+  button.disabled = seconds > 0;
+  button.classList.toggle("ready", seconds === 0);
+  button.textContent = seconds ? `إعادة إرسال الرمز بعد ${seconds} ثانية` : "إعادة إرسال الرمز";
+  hint.textContent = seconds ? "سيُفعّل الزر تلقائياً بعد انتهاء العدّاد." : "يمكنك طلب رمز جديد الآن.";
+  if (seconds === 0) clearOtpResendCountdown();
+}
+function startOtpResendCountdown() {
+  clearOtpResendCountdown();
+  updateOtpResendCountdown();
+  if (otpResendAvailableAt > Date.now()) otpResendTimer = window.setInterval(updateOtpResendCountdown, 250);
+}
+async function sendEmployeeOtp() {
+  const url = CONFIG.n8n?.employeeLoginOtpUrl || CONFIG.n8n?.loginOtpUrl;
+  if (!url) throw new Error("لم يتم إعداد خدمة إرسال رمز واتساب.");
+  const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone: otpDeliveryPhone, email: "", purpose: "hrms_login", portal: "employee", employeeId: otpEmployee.id }) });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.ok === false) throw new Error(data.message || "تعذر إرسال رمز واتساب.");
+  otpResendAvailableAt = Date.now() + 30000;
+}
+async function resendEmployeeOtp() {
+  if (!otpEmployee || !otpDeliveryPhone) return;
+  if (otpResendAvailableAt > Date.now()) { updateOtpResendCountdown(); return; }
+  const message = $("#pin-message");
+  try {
+    await sendEmployeeOtp();
+    message.textContent = "تمت إعادة إرسال رمز التحقق إلى واتساب.";
+    startOtpResendCountdown();
+  } catch (error) {
+    otpResendAvailableAt = 0;
+    message.textContent = error.message || "تعذر إعادة إرسال الرمز.";
+    updateOtpResendCountdown();
+  }
+}
 
 async function start() {
   try { await signInAnonymously(auth); }
@@ -98,7 +140,8 @@ onAuthStateChanged(auth, async user => {
 
 $("#phone-form").onsubmit = requestOtp;
 $("#otp-form").onsubmit = verifyOtp;
-$("#back-to-phone").onclick = () => { $("#otp-stage").classList.add("hidden"); $("#phone-stage").classList.remove("hidden"); $("#pin-message").textContent = ""; };
+$("#back-to-phone").onclick = () => { clearOtpResendCountdown(); otpResendAvailableAt = 0; $("#otp-stage").classList.add("hidden"); $("#phone-stage").classList.remove("hidden"); $("#pin-message").textContent = ""; };
+$("#resend-employee-otp").onclick = resendEmployeeOtp;
 $("#employee-dial").innerHTML = dialOptions("+965");
 bindNumeric($("#phone-form"));
 bindNumeric($("#otp-form"));
@@ -117,14 +160,11 @@ async function requestOtp(event) {
     otpEmployee = findEmployeeByPhone(phone, list);
     if (!otpEmployee) throw new Error("رقم الهاتف غير مرتبط بملف موظف.");
     otpDeliveryPhone = whatsappPhoneFor(otpEmployee, phone, $("#employee-dial").value);
-    const url = CONFIG.n8n?.employeeLoginOtpUrl || CONFIG.n8n?.loginOtpUrl;
-    if (!url) throw new Error("لم يتم إعداد خدمة إرسال رمز واتساب.");
-    const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone: otpDeliveryPhone, email: "", purpose: "hrms_login", portal: "employee", employeeId: otpEmployee.id }) });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok || data.ok === false) throw new Error(data.message || "تعذر إرسال رمز واتساب.");
+    await sendEmployeeOtp();
     $("#otp-phone").textContent = `أرسلنا رمز التحقق إلى رقم ${otpDeliveryPhone.slice(-4).padStart(otpDeliveryPhone.length, "•")}`;
     $("#phone-stage").classList.add("hidden");
     $("#otp-stage").classList.remove("hidden");
+    startOtpResendCountdown();
     $("#otp-code").focus();
     message.textContent = "";
   } catch (error) { message.textContent = error.message || "تعذر إرسال الرمز."; }
@@ -146,6 +186,7 @@ async function verifyOtp(event) {
     const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone: otpDeliveryPhone || phone, code, purpose: "hrms_login", portal: "employee", employeeId: otpEmployee.id }) });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) throw new Error(data.message || "رمز التحقق غير صحيح.");
+    clearOtpResendCountdown();
     employee = otpEmployee;
     currentPin = String(employee.attendancePin || "");
     sessionStorage.setItem("rakaezEmployeeSession", employee.id);

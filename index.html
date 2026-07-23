@@ -8,18 +8,18 @@
   <link rel="preconnect" href="https://cdnjs.cloudflare.com">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
   <link rel="stylesheet" href="style.css?v=20260722-attendance">
-  <link rel="stylesheet" href="login-phone.css?v=20260723-dial-code">
+  <link rel="stylesheet" href="login-phone.css?v=20260723-otp-resend">
 </head>
 <body>
   <div id="boot" class="boot"><i class="fa-solid fa-fingerprint"></i><span></span><p>نجهّز بوابة الموظف...</p></div>
   <main id="pin-page" class="pin-page hidden">
-    <section class="pin-card"><div class="portal-mark"><i class="fa-solid fa-fingerprint"></i></div><span>ركائز للموظفين</span><h1>دخول البصمة</h1><div id="phone-stage"><p>أدخل رقم هاتفك الشخصي</p><form id="phone-form"><div class="login-phone-row"><select id="employee-dial" aria-label="مفتاح الدولة"></select><input id="employee-phone" inputmode="numeric" maxlength="15" placeholder="رقم الهاتف" autocomplete="tel" required></div><button>إرسال رمز واتساب</button></form></div><div id="otp-stage" class="hidden"><p id="otp-phone"></p><form id="otp-form"><input id="otp-code" inputmode="numeric" maxlength="6" placeholder="— — — — — —" autocomplete="one-time-code" required><button>تحقق ودخول</button></form><button id="back-to-phone" class="back-otp" type="button">تغيير رقم الهاتف</button></div><small id="pin-message"></small></section>
+    <section class="pin-card"><div class="portal-mark"><i class="fa-solid fa-fingerprint"></i></div><span>ركائز للموظفين</span><h1>دخول البصمة</h1><div id="phone-stage"><p>أدخل رقم هاتفك الشخصي</p><form id="phone-form"><div class="login-phone-row"><select id="employee-dial" aria-label="مفتاح الدولة"></select><input id="employee-phone" inputmode="numeric" maxlength="15" placeholder="رقم الهاتف" autocomplete="tel" required></div><button>إرسال رمز واتساب</button></form></div><div id="otp-stage" class="hidden"><p id="otp-phone"></p><form id="otp-form"><input id="otp-code" inputmode="numeric" maxlength="6" placeholder="— — — — — —" autocomplete="one-time-code" required><button>تحقق ودخول</button></form><button id="resend-employee-otp" class="otp-resend" type="button" disabled>إعادة إرسال الرمز بعد 30 ثانية</button><small id="employee-otp-resend-countdown" class="otp-resend-hint"></small><button id="back-to-phone" class="back-otp" type="button">تغيير رقم الهاتف</button></div><small id="pin-message"></small></section>
   </main>
   <main id="employee-app" class="employee-app hidden"></main>
   <div id="portal-modal"></div>
   <div id="portal-toast" class="portal-toast hidden"></div>
   <div id="portal-loading" class="portal-loading hidden"><div><i class="fa-solid fa-fingerprint"></i><span></span><h3>يرجى الانتظار</h3><p>يتم حفظ بياناتك...</p></div></div>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
-  <script type="module" src="app.js?v=20260723-login-country-selector"></script>
+  <script type="module" src="app.js?v=20260723-otp-resend"></script>
 </body>
 </html>
