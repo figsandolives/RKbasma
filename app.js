@@ -60,8 +60,23 @@ function loading(show, title = "يرجى الانتظار", text = "يتم حف�
 function bindNumeric(root = document) {
   root.querySelectorAll('input[inputmode="numeric"]').forEach(input => input.oninput = () => input.value = onlyDigits(input.value));
 }
+function contactPhones(record = {}) {
+  const values = [
+    record.primaryPhone,
+    ...(Array.isArray(record.alternatePhones) ? record.alternatePhones : []),
+    record.kuwaitPhone,
+    record.personalPhone,
+    record.phone,
+    record.phoneNumber
+  ];
+  const seen = new Set();
+  return values.map(value => ({
+    phone: normalPhone(value?.phone || value?.number || value),
+    dialCode: normalPhone(value?.dialCode || value?.countryCode || "")
+  })).filter(value => value.phone && !seen.has(`${value.dialCode}:${value.phone}`) && seen.add(`${value.dialCode}:${value.phone}`));
+}
 function phoneValues(record) {
-  return [record.primaryPhone, ...(record.alternatePhones || [])].map(phone => normalPhone(phone?.phone || phone)).filter(Boolean);
+  return contactPhones(record).map(value => value.phone);
 }
 function findEmployeeByPhone(rawPhone, employees) {
   const entered = normalPhone(rawPhone);
@@ -72,9 +87,7 @@ function whatsappPhoneFor(record, enteredPhone, selectedDial = "") {
   const entered = normalPhone(enteredPhone);
   const dialCode = normalPhone(selectedDial);
   const short = entered.slice(-8);
-  const phones = [record.primaryPhone, ...(record.alternatePhones || [])]
-    .map(value => ({ phone: normalPhone(value?.phone || value), dialCode: normalPhone(value?.dialCode || "") }))
-    .filter(value => value.phone);
+  const phones = contactPhones(record);
   const matched = phones.find(value => value.phone === entered || value.phone.slice(-8) === short) || phones[0];
   const nationalPhone = matched?.phone || (dialCode && entered.startsWith(dialCode) ? entered.slice(dialCode.length) : entered);
   return `${dialCode || matched?.dialCode || ""}${nationalPhone}`.replace(/^00/, "");
