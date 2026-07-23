@@ -36,7 +36,7 @@ const formatTime = value => {
   const [hour = 0, minute = 0] = String(value || "00:00").split(":").map(Number);
   return `${hour % 12 || 12}:${String(minute).padStart(2, "0")} ${hour >= 12 ? "م" : "ص"}`;
 };
-const dialOptions = selected => countries.map(([name, dial, flag]) => `<option value="${dial}" ${dial === selected ? "selected" : ""}>${flag} ${dial} · ${name}</option>`).join("");
+const dialOptions = selected => countries.map(([, dial, flag]) => `<option value="${dial}" ${dial === selected ? "selected" : ""}>${flag} ${dial}</option>`).join("");
 const normalPhone = phone => onlyDigits(phone).replace(/^00/, "");
 
 function showLogin(message = "") {
