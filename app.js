@@ -276,9 +276,9 @@ function renderHome() {
   $("#boot").classList.add("hidden");
   const app = $("#employee-app");
   app.classList.remove("hidden");
-  app.innerHTML = `<button id="open-settings" class="settings-button" aria-label="${t("الإعدادات")}"><i class="fa-solid fa-gear"></i></button><section class="employee-hero"><div class="profile-image">${employee.photoUrl || employee.photoDataUrl ? `<img src="${esc(employee.photoUrl || employee.photoDataUrl)}" alt="">` : `<span>${initials(employee.fullName)}</span>`}</div><div><small>${t("مرحباً بك")}</small><h1>${esc(employee.fullName)}</h1><p><i class="fa-regular fa-calendar-days"></i> ${schedule ? `${t("جدول دوام")} ${esc(localizeStored(schedule.dayName))}` : t("لا يوجد جدول منشور")}</p></div></section><section class="today-card"><header><div><span>${t("جدول الدوام")}</span><h2>${schedule ? `${esc(localizeStored(schedule.dayName))} · ${schedule.dateKey}` : t("بانتظار نشر الجدول")}</h2></div><i class="fa-regular fa-calendar-check"></i></header><div class="shifts">${items.length ? items.map(shiftCard).join("") : `<div class="no-shifts"><i class="fa-regular fa-calendar-xmark"></i><p>${t("لا توجد فترات دوام منشورة لك حاليًا.")}</p></div>`}</div></section><section class="fingerprint-area"><button id="fingerprint-button"><i class="fa-solid fa-fingerprint"></i></button><h2>${t("اضغط لتسجيل البصمة")}</h2><p id="fingerprint-status">${t("اختر الدخول أو الخروج ثم وجّه الكاميرا للباركود")}</p></section><nav class="bottom-nav"><button data-view="services"><i class="fa-solid fa-grip"></i><span>${t("خدمات")}</span></button><button class="active"><i class="fa-solid fa-fingerprint"></i><span>${t("البصمة")}</span></button><button data-view="notifications"><i class="fa-regular fa-bell"></i><span>${t("إشعارات")}</span></button></nav>`;
+  app.innerHTML = `<button id="open-settings" class="settings-button" aria-label="${t("الإعدادات")}"><i class="fa-solid fa-gear"></i></button><section class="employee-hero"><div class="profile-image">${employee.photoUrl || employee.photoDataUrl ? `<img src="${esc(employee.photoUrl || employee.photoDataUrl)}" alt="">` : `<span>${initials(employee.fullName)}</span>`}</div><div><small>${t("مرحباً بك")}</small><h1>${esc(employee.fullName)}</h1><p><i class="fa-regular fa-calendar-days"></i> ${schedule ? `${t("جدول دوام")} ${esc(localizeStored(schedule.dayName))}` : t("لا يوجد جدول منشور")}</p></div></section><section class="today-card"><header><div><span>${t("جدول الدوام")}</span><h2>${schedule ? `${esc(localizeStored(schedule.dayName))} · ${schedule.dateKey}` : t("بانتظار نشر الجدول")}</h2></div><i class="fa-regular fa-calendar-check"></i></header><div class="shifts">${items.length ? items.map(shiftCard).join("") : `<div class="no-shifts"><i class="fa-regular fa-calendar-xmark"></i><p>${t("لا توجد فترات دوام منشورة لك حاليًا.")}</p></div>`}</div></section><section class="fingerprint-area"><button id="fingerprint-button"><i class="fa-solid fa-fingerprint"></i></button><h2>${t("اضغط لتسجيل البصمة")}</h2><p id="fingerprint-status">${language === "en" ? "Attendance is recorded directly, as in the previous portal." : "يتم تسجيل وقت العملية مباشرة"}</p></section><nav class="bottom-nav"><button data-view="services"><i class="fa-solid fa-grip"></i><span>${t("خدمات")}</span></button><button class="active"><i class="fa-solid fa-fingerprint"></i><span>${t("البصمة")}</span></button><button data-view="notifications"><i class="fa-regular fa-bell"></i><span>${t("إشعارات")}</span></button></nav>`;
   $("#open-settings").onclick = renderSettings;
-  $("#fingerprint-button").onclick = openPunchChooser;
+  $("#fingerprint-button").onclick = recordAttendance;
   document.querySelectorAll("[data-view]").forEach(button => button.onclick = () => renderUnderDevelopment(button.dataset.view));
 }
 function renderUnderDevelopment(view) {
@@ -378,17 +378,40 @@ async function verifyScannedBarcode(value) {
     const distance = distanceMeters(location, { lat: Number(center.lat), lng: Number(center.lng) });
     if (distance > radius) throw new Error(language === "en" ? `You are outside the attendance location (${Math.round(distance)} m).` : `أنت خارج نطاق مكان البصمة (${Math.round(distance)} م).`);
     message.textContent = t("تم التحقق من الباركود والموقع. جاري تسجيل البصمة...");
-    await recordAttendance(place, { ...location, distance: Math.round(distance), radiusMeters: radius });
+    await recordVerifiedAttendance(place, { ...location, distance: Math.round(distance), radiusMeters: radius });
     closeScanner();
   } catch (error) { scanBusy = false; message.textContent = error.message || t("تعذر التحقق من مكان البصمة."); scanFrame = requestAnimationFrame(scanBarcodeFrame); }
 }
-async function recordAttendance(place, location) {
+async function recordVerifiedAttendance(place, location) {
   const today = dateKey(new Date());
   const entry = push(ref(db, `${ROOT}/attendance/${today}/${employee.id}`));
   await set(entry, { id: entry.key, employeeId: employee.id, type: pendingPunchType, timestamp: Date.now(), source: "employee-portal", verificationMode: "barcode-location", fingerprintPlaceId: place.id, barcodeToken: place.barcodeToken || "", barcodeValue: place.barcodeValue || "", barcodeTitle: place.title || place.branchName || "", branchKey: place.branchKey || "", branchName: place.branchName || "", location });
   const message = pendingPunchType === "checkIn" ? t("تم تسجيل الدخول بنجاح") : t("تم تسجيل الخروج بنجاح");
   $("#fingerprint-status") && ($("#fingerprint-status").textContent = message);
   showToast(message);
+}
+
+async function recordAttendance() {
+  const button = $("#fingerprint-button"), status = $("#fingerprint-status"), today = dateKey(new Date());
+  button.disabled = true;
+  status.textContent = language === "en" ? "Recording attendance..." : "جاري تسجيل البصمة...";
+  try {
+    const logsRef = ref(db, `${ROOT}/attendance/${today}/${employee.id}`);
+    const snap = await get(logsRef);
+    const count = snap.exists() ? Object.keys(snap.val()).length : 0;
+    const type = count % 2 === 0 ? "checkIn" : "checkOut";
+    const entry = push(logsRef);
+    await set(entry, { id: entry.key, employeeId: employee.id, type, timestamp: Date.now(), source: "employee-portal" });
+    const message = type === "checkIn" ? (language === "en" ? "Check-in recorded successfully" : "تم تسجيل الحضور بنجاح") : (language === "en" ? "Check-out recorded successfully" : "تم تسجيل الانصراف بنجاح");
+    status.textContent = message;
+    button.classList.add("success");
+    showToast(message);
+  } catch (error) {
+    status.textContent = `${language === "en" ? "Could not record attendance: " : "تعذر تسجيل البصمة: "}${error.message || ""}`;
+  } finally {
+    button.disabled = false;
+    setTimeout(() => button.classList.remove("success"), 1800);
+  }
 }
 
 function phoneField(number, dial, index, type) {

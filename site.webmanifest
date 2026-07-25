@@ -1,0 +1,26 @@
+{
+  "name": "بصمة ركائز",
+  "short_name": "بصمة ركائز",
+  "description": "بوابة بصمة موظفي ركائز",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#eef7ff",
+  "theme_color": "#075985",
+  "icons": [
+    {
+      "src": "fingerprint-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "fingerprint-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="بصمة ركائز">
+  <rect width="512" height="512" rx="112" fill="#075985"/>
+  <path fill="#0ea5b7" d="M0 320c102 64 213 91 330 74 67-10 128-37 182-77v195H0Z"/>
+  <g fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
+    <path stroke-width="25" d="M154 211c13-68 73-112 142-101 61 10 105 64 101 126-3 47-21 92-52 128"/>
+    <path stroke-width="25" d="M119 248c0-77 62-139 139-139s139 62 139 139c0 77-33 150-90 200"/>
+    <path stroke-width="25" d="M165 270c0-51 41-92 92-92s92 41 92 92c0 56-23 109-63 147"/>
+    <path stroke-width="25" d="M213 270c0-25 20-45 45-45s45 20 45 45c0 42-17 82-45 111"/>
+    <path stroke-width="25" d="M118 325c9 42 30 80 61 109"/>
+    <path stroke-width="25" d="M161 383c14 20 31 38 51 52"/>
+  </g>
+  <circle cx="402" cy="406" r="52" fill="#fff"/>
+  <text x="402" y="423" text-anchor="middle" font-family="Arial, sans-serif" font-size="54" font-weight="700" fill="#075985">ر</text>
+</svg>

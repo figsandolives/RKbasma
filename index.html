@@ -3,8 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#eef7ff">
+  <meta name="theme-color" content="#075985">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="بصمة ركائز">
   <title>ركائز | بصمة الموظف</title>
+  <link rel="manifest" href="site.webmanifest">
+  <link rel="icon" href="fingerprint-icon.svg" type="image/svg+xml">
+  <link rel="icon" href="fingerprint-icon-192.png" sizes="192x192" type="image/png">
+  <link rel="apple-touch-icon" href="fingerprint-icon-180.png" sizes="180x180">
   <link rel="preconnect" href="https://cdnjs.cloudflare.com">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
   <link rel="stylesheet" href="style.css?v=20260725-bilingual-phone-login">
@@ -36,7 +43,10 @@
   <div id="portal-modal"></div>
   <div id="portal-toast" class="portal-toast hidden"></div>
   <div id="portal-loading" class="portal-loading hidden"><div><i class="fa-solid fa-fingerprint"></i><span></span><h3>يرجى الانتظار</h3><p>يتم حفظ بياناتك...</p></div></div>
+  <script>
+    if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js"));
+  </script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
-  <script type="module" src="app.js?v=20260725-bilingual-phone-login"></script>
+  <script type="module" src="app.js?v=20260725-legacy-attendance"></script>
 </body>
 </html>
