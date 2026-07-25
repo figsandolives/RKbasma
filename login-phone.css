@@ -3,4 +3,14 @@
 .login-phone-row select{min-width:0;border:0;border-left:1px solid var(--line);background:#edf7ff;color:var(--navy);direction:rtl;padding:0 10px;font-size:12px;font-weight:800;outline:0}
 .login-phone-row:focus-within{border-color:var(--blue);box-shadow:0 0 0 4px rgba(8,120,232,.1)}
 @media(max-width:420px){.login-phone-row{grid-template-columns:128px 1fr}.login-phone-row select{font-size:11px;padding:0 6px}}
-.pin-card .otp-resend{width:100%;margin-top:12px;background:#fff0f2;color:#c43f4e;border:1px solid #f2b7bf;box-shadow:none}.pin-card .otp-resend:disabled{opacity:.8;cursor:not-allowed}.pin-card .otp-resend.ready{background:#d54c58;color:#fff;border-color:#d54c58;box-shadow:0 8px 18px rgba(213,72,88,.2)}.otp-resend-hint{display:block;min-height:20px;margin:8px 0 2px;color:#9b6670;font-size:11px}
+.language-switch{position:fixed;z-index:120;top:18px;inset-inline-end:18px;display:flex;gap:5px;padding:5px;border:1px solid rgba(198,220,239,.9);border-radius:14px;background:rgba(255,255,255,.92);box-shadow:0 10px 28px rgba(35,86,132,.13);backdrop-filter:blur(12px)}
+.language-switch button{min-width:76px;height:38px;padding:0 12px;border:0;border-radius:10px;background:transparent;color:#40536b;font-weight:800}
+.language-switch button.active{background:linear-gradient(135deg,var(--blue2),var(--blue));color:#fff;box-shadow:0 7px 16px rgba(8,120,232,.22)}
+html[dir="ltr"] .settings-phone-row,html[dir="ltr"] .login-phone-row{direction:ltr}
+html[dir="ltr"] .login-phone-row select{border-left:0;border-right:1px solid var(--line);direction:ltr}
+html[dir="ltr"] .modal-x{right:auto;left:16px}
+html[dir="ltr"] .employee-hero p i{margin-left:0;margin-right:8px}
+html[dir="ltr"] .shift-card span{border-left:0;border-right:1px solid #d6e8f8}
+html[dir="ltr"] .shift-card span:last-child{border-right:0}
+html[dir="ltr"] .portal-logout{margin-right:0!important;margin-left:auto!important}
+@media(max-width:520px){.language-switch{top:10px;inset-inline-end:10px}.language-switch button{min-width:65px;height:34px;padding:0 8px;font-size:12px}.pin-page{padding-top:75px!important}}
