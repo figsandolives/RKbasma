@@ -12,6 +12,11 @@ const $ = selector => document.querySelector(selector);
 const ROOT = "organizations/default";
 const countries = [["الكويت", "Kuwait", "+965", "🇰🇼"], ["الهند", "India", "+91", "🇮🇳"], ["مصر", "Egypt", "+20", "🇪🇬"], ["الفلبين", "Philippines", "+63", "🇵🇭"], ["بنغلاديش", "Bangladesh", "+880", "🇧🇩"], ["سوريا", "Syria", "+963", "🇸🇾"], ["الأردن", "Jordan", "+962", "🇯🇴"], ["فلسطين", "Palestine", "+970", "🇵🇸"], ["لبنان", "Lebanon", "+961", "🇱🇧"]];
 const branchAliases = { hawalli: ["hawalli", "surra"], surra: ["hawalli", "surra"], abu_al_hasaniya: ["abu_al_hasaniya", "abulhasania"], abulhasania: ["abu_al_hasaniya", "abulhasania"], yarmouk: ["yarmouk"] };
+const defaultFingerprintPlaces = [
+  { id: "barcode-hawally", mode: "barcode", title: "باركود حولي", branchKey: "surra", branchName: "حولي", barcodeToken: "bq-1780311331449-wtnbcl1f", barcodeValue: "HRMS-BASMA:bq-1780311331449-wtnbcl1f", location: { lat: 29.342263, lng: 48.018131 }, radiusMeters: 30 },
+  { id: "barcode-abu-al-hasaniya", mode: "barcode", title: "باركود أبو الحصانية", branchKey: "abulhasania", branchName: "أبو الحصانية", barcodeToken: "bq-1782039493830-opsvylqd", barcodeValue: "HRMS-BASMA:bq-1782039493830-opsvylqd", location: { lat: 29.342263, lng: 48.018131 }, radiusMeters: 30 },
+  { id: "barcode-yarmouk", mode: "barcode", title: "باركود اليرموك", branchKey: "yarmouk", branchName: "اليرموك", barcodeToken: "bq-1782039427444-t1gcyrka", barcodeValue: "HRMS-BASMA:bq-1782039427444-t1gcyrka", location: { lat: 29.342263, lng: 48.018131 }, radiusMeters: 30 }
+];
 let employee = null;
 let publishedSchedules = [];
 let fingerprintPlaces = [];
@@ -118,7 +123,7 @@ const dateKey = date => `${date.getFullYear()}-${String(date.getMonth() + 1).pad
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const formatTime = value => {
   const [hour = 0, minute = 0] = String(value || "00:00").split(":").map(Number);
-  return `${hour % 12 || 12}:${String(minute).padStart(2, "0")} ${language === "en" ? (hour >= 12 ? "PM" : "AM") : (hour >= 12 ? "م" : "ص")}`;
+  return `\u200E${hour % 12 || 12}:${String(minute).padStart(2, "0")} ${language === "en" ? (hour >= 12 ? "PM" : "AM") : (hour >= 12 ? "م" : "ص")}\u200E`;
 };
 const dialOptions = selected => countries.map(([arabicName, englishName, dial, flag]) => `<option value="${dial}" ${dial === selected ? "selected" : ""}>${flag} ${dial} · ${language === "en" ? englishName : arabicName}</option>`).join("");
 const normalPhone = phone => onlyDigits(phone).replace(/^00/, "");
@@ -251,7 +256,8 @@ async function loginWithPhone(event) {
 async function loadPortalData() {
   const [schedules, places] = await Promise.all([get(ref(db, `${ROOT}/schedules`)), get(ref(db, `${ROOT}/fingerprintPlaces`))]);
   publishedSchedules = Object.values(schedules.val() || {}).filter(item => item.published).sort((a, b) => String(a.dateKey).localeCompare(String(b.dateKey)));
-  fingerprintPlaces = Object.entries(places.val() || {}).map(([id, value]) => ({ id, ...value }));
+  const configuredPlaces = Object.entries(places.val() || {}).map(([id, value]) => ({ id, ...value }));
+  fingerprintPlaces = configuredPlaces.length ? configuredPlaces : defaultFingerprintPlaces;
 }
 function employeeAssignments() {
   const today = dateKey(new Date());
@@ -292,7 +298,12 @@ function openPunchChooser() {
 function placesForCurrentDuty() {
   const { items } = employeeAssignments();
   const ids = new Set(items.flatMap(item => branchAliases[item.branchId] || [item.branchId]));
-  return ids.size ? fingerprintPlaces.filter(place => ids.has(place.branchKey)) : fingerprintPlaces;
+  const matchingPlaces = fingerprintPlaces.filter(place => {
+    const placeKeys = branchAliases[place.branchKey] || [place.branchKey];
+    return placeKeys.some(key => ids.has(key));
+  });
+  if (!ids.size) return fingerprintPlaces;
+  return matchingPlaces.length ? matchingPlaces : fingerprintPlaces;
 }
 function parseBarcode(value) {
   const raw = String(value || "").trim();
