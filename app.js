@@ -1,7 +1,7 @@
 import { CONFIG } from "./config.js?v=20260725-phone-login";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
-import { getDatabase, ref, get, set, push, update } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-database.js";
+import { getDatabase, ref, get, set, push, update, onValue, query, orderByChild, equalTo } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-database.js";
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-storage.js";
 
 const firebaseApp = initializeApp(CONFIG.firebase);
@@ -19,7 +19,14 @@ const defaultFingerprintPlaces = [
 ];
 let employee = null;
 let publishedSchedules = [];
+let employeeNotifications = [];
+let notificationTab="unread";
+let visibleUnreadIds=new Set();
 let fingerprintPlaces = [];
+let employeeLeaves = [];
+let stopNotificationListener = null;
+let notificationListenerReady = false;
+let tomorrowPopupShown = false;
 let pendingPunchType = null;
 let scanStream = null;
 let scanFrame = null;
@@ -57,11 +64,35 @@ const en = {
   "جدول الدوام": "Work schedule",
   "بانتظار نشر الجدول": "Waiting for the schedule",
   "لا توجد فترات دوام منشورة لك حاليًا.": "You currently have no published shifts.",
+  "إجازة اليوم": "Today's leave",
+  "إجازة أسبوعية": "Weekly leave",
+  "إجازة سنوية": "Annual leave",
+  "إجازة مرضية": "Sick leave",
+  "إجازة": "Leave",
+  "نصف يوم": "Half day",
+  "لديك إجازة اليوم": "You are on leave today",
+  "جارٍ تحليل الباركود...": "Analyzing QR code...",
+  "تم تسجيل بصمة الدخول بنجاح": "Check-in recorded successfully",
+  "تم تسجيل بصمة الخروج بنجاح": "Check-out recorded successfully",
   "اضغط لتسجيل البصمة": "Tap to record attendance",
   "اختر الدخول أو الخروج ثم وجّه الكاميرا للباركود": "Choose check-in or check-out, then point the camera at the QR code",
   "خدمات": "Services",
   "البصمة": "Attendance",
   "إشعارات": "Notifications",
+  "لا توجد إشعارات": "No notifications",
+  "ستظهر هنا إشعارات الدوام والملاحظات الجديدة.": "New schedule and note notifications will appear here.",
+  "دوامك غداً": "Your shift tomorrow",
+  "إجازتك غداً": "Your leave tomorrow",
+  "إجازتك ودوامك غداً": "Your leave and shift tomorrow",
+  "تفاصيل دوامك": "Your shift details",
+  "تم تسجيل إجازتك في الجدول": "Your leave was added to the schedule",
+  "ملاحظات": "Notes",
+  "تم نشر جدول جديد": "A new schedule was published",
+  "تفعيل إشعارات الجهاز": "Enable device notifications",
+  "الإشعارات مفعّلة": "Device notifications are enabled",
+  "فعّل الإشعارات لتصلك تنبيهات الجدول على جهازك.": "Enable notifications to receive schedule alerts on your device.",
+  "تعذر تفعيل الإشعارات من إعدادات المتصفح.": "Notifications could not be enabled. Check your browser settings.",
+  "جديد": "New",
   "بوابة الموظف": "Employee portal",
   "قيد التطوير": "Coming soon",
   "إغلاق": "Close",
@@ -76,13 +107,8 @@ const en = {
   "تعذر تحميل قارئ الباركود. تحقق من الاتصال بالإنترنت ثم أعد المحاولة.": "The QR reader could not load. Check your internet connection and try again.",
   "لا توجد أماكن بصمة مرتبطة بجدولك اليوم.": "No attendance locations are linked to your schedule today.",
   "اسمح للمتصفح باستخدام الكاميرا لمسح الباركود.": "Allow the browser to use the camera to scan the QR code.",
-  "الموقع الجغرافي غير متاح على هذا الجهاز.": "Location services are unavailable on this device.",
-  "اسمح بالوصول إلى موقعك الجغرافي.": "Allow access to your location.",
   "هذا الباركود لا يخص فرع دوامك الحالي.": "This QR code does not belong to your current work branch.",
-  "تمت قراءة الباركود، جاري التحقق من الموقع...": "QR code scanned. Verifying your location...",
-  "لم يتم ضبط موقع هذا المكان بعد.": "This location has not been configured yet.",
-  "تم التحقق من الباركود والموقع. جاري تسجيل البصمة...": "QR code and location verified. Recording attendance...",
-  "تعذر التحقق من مكان البصمة.": "Could not verify the attendance location.",
+  "تعذر تسجيل البصمة عبر الباركود.": "Could not record attendance from the QR code.",
   "تم تسجيل الدخول بنجاح": "Check-in recorded successfully",
   "تم تسجيل الخروج بنجاح": "Check-out recorded successfully",
   "نوع القرابة": "Relationship",
@@ -119,6 +145,9 @@ const onlyDigits = value => digits(value).replace(/\D/g, "");
 const esc = (value = "") => String(value).replace(/[&<>'"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[c]));
 const firstName = name => String(name || t("موظف")).trim().split(/\s+/)[0];
 const initials = name => String(name || "").trim().split(/\s+/).slice(0, 2).map(part => part[0] || "").join("");
+const employeeName = () => language === "en"
+  ? String(employee?.fullNameEn || "").trim()
+  : String(employee?.fullNameAr || employee?.fullName || "").trim();
 const dateKey = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const formatTime = value => {
@@ -151,7 +180,8 @@ function applyLanguage() {
   $("#portal-modal").innerHTML = "";
   if (employee) {
     if (currentView === "settings") renderSettings();
-    else if (currentView === "services" || currentView === "notifications") renderUnderDevelopment(currentView);
+    else if (currentView === "services") renderServices();
+    else if (currentView === "notifications") renderNotifications();
     else renderHome();
   }
 }
@@ -217,15 +247,17 @@ async function start() {
 }
 onAuthStateChanged(auth, async user => {
   if (!user) return;
-  const savedId = sessionStorage.getItem("rakaezEmployeeSession");
+  const savedId = localStorage.getItem("rakaezEmployeeSession") || sessionStorage.getItem("rakaezEmployeeSession");
   if (!savedId) { showLogin(); return; }
   try {
     const snap = await get(ref(db, `${ROOT}/employees/${savedId}`));
     if (!snap.exists()) throw new Error(t("انتهت الجلسة."));
     employee = { id: snap.key, ...snap.val() };
+    localStorage.setItem("rakaezEmployeeSession", employee.id);
+    sessionStorage.removeItem("rakaezEmployeeSession");
     await loadPortalData();
-    renderHome();
-  } catch { sessionStorage.removeItem("rakaezEmployeeSession"); showLogin(); }
+    renderInitialPortal();
+  } catch { localStorage.removeItem("rakaezEmployeeSession"); sessionStorage.removeItem("rakaezEmployeeSession"); showLogin(); }
 });
 
 $("#phone-form").onsubmit = loginWithPhone;
@@ -246,46 +278,232 @@ async function loginWithPhone(event) {
     const selectedDial = normalPhone($("#employee-dial").value);
     employee = findEmployeeByPhone(`${selectedDial}${phone}`, list) || findEmployeeByPhone(phone, list);
     if (!employee) throw new Error(t("رقم الهاتف غير مرتبط بملف موظف."));
-    sessionStorage.setItem("rakaezEmployeeSession", employee.id);
+    localStorage.setItem("rakaezEmployeeSession", employee.id);
     await loadPortalData();
-    renderHome();
+    renderInitialPortal();
   } catch (error) { employee = null; message.textContent = error.message || t("تعذر تسجيل الدخول."); }
   finally { button.disabled = false; }
 }
 
 async function loadPortalData() {
-  const [schedules, places] = await Promise.all([get(ref(db, `${ROOT}/schedules`)), get(ref(db, `${ROOT}/fingerprintPlaces`))]);
-  publishedSchedules = Object.values(schedules.val() || {}).filter(item => item.published).sort((a, b) => String(a.dateKey).localeCompare(String(b.dateKey)));
+  const today = new Date(), tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  const dateKey = value => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+  const scheduleDates = [dateKey(today), dateKey(tomorrow)];
+  const [schedules, places, leaves, notifications] = await Promise.all([Promise.all(scheduleDates.map(date => get(ref(db, `${ROOT}/schedules/${date}`)))), get(ref(db, `${ROOT}/fingerprintPlaces`)), get(query(ref(db, `${ROOT}/leaves`), orderByChild("employeeId"), equalTo(employee.id))), get(ref(db, `${ROOT}/employeeNotifications/${employee.id}`))]);
+  publishedSchedules = schedules.map(snap => snap.val()).filter(item => item?.published).sort((a, b) => String(a.dateKey).localeCompare(String(b.dateKey)));
+  employeeNotifications = Object.values(notifications.val() || {}).sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
   const configuredPlaces = Object.entries(places.val() || {}).map(([id, value]) => ({ id, ...value }));
   fingerprintPlaces = configuredPlaces.length ? configuredPlaces : defaultFingerprintPlaces;
+  employeeLeaves = Object.entries(leaves.val() || {}).map(([id, value]) => ({ id, ...value }));
+  updateAppBadge();
+  bindNotificationListener();
+}
+function renderInitialPortal() {
+  const requestedView = new URLSearchParams(location.search).get("view");
+  if (requestedView === "notifications") renderNotifications();
+  else renderHome();
+}
+function unreadNotifications() { return employeeNotifications.filter(item => !item.read); }
+async function updateAppBadge() {
+  const count = unreadNotifications().length;
+  try {
+    if (count && navigator.setAppBadge) await navigator.setAppBadge(count);
+    else if (!count && navigator.clearAppBadge) await navigator.clearAppBadge();
+  } catch {}
+}
+function notificationBadge() {
+  const count = unreadNotifications().length;
+  return count ? `<em class="notification-badge" aria-label="${count}">${count > 9 ? "9+" : count}</em>` : "";
+}
+function bindNotificationListener() {
+  stopNotificationListener?.();
+  notificationListenerReady = false;
+  stopNotificationListener = onValue(ref(db, `${ROOT}/employeeNotifications/${employee.id}`), snap => {
+    const previousIds = new Set(employeeNotifications.map(item => `${item.id}:${item.createdAt}`));
+    const next = Object.values(snap.val() || {}).sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+    const fresh = next.find(item => !previousIds.has(`${item.id}:${item.createdAt}`));
+    employeeNotifications = next;
+    updateAppBadge();
+    if (currentView === "notifications") renderNotifications(false);
+    else refreshVisibleNotificationBadge();
+    if (notificationListenerReady && fresh) {
+      showDeviceNotification(fresh);
+      if (isTomorrowNotification(fresh)) showTomorrowSchedulePopup(fresh);
+    }
+    notificationListenerReady = true;
+  });
+}
+function refreshVisibleNotificationBadge() {
+  document.querySelectorAll(".notification-badge").forEach(node => node.remove());
+  const button = document.querySelector('[data-view="notifications"]');
+  if (button && unreadNotifications().length) button.insertAdjacentHTML("beforeend", notificationBadge());
+}
+function isToday(timestamp) { return dateKey(new Date(Number(timestamp))) === dateKey(new Date()); }
+function tomorrowKey() { const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1); return dateKey(tomorrow); }
+function isTomorrowNotification(item) { return item?.type === "schedule" && item.scheduleDate === tomorrowKey() && isToday(item.publishedAt || item.createdAt); }
+function tomorrowNotification() { return employeeNotifications.find(isTomorrowNotification) || null; }
+function translatedTasks(item) {
+  if (language !== "en") return item.tasks || [];
+  return (item.taskTranslations || []).map(value => value?.text || value).filter(Boolean);
+}
+function notificationShiftCard(item, index) {
+  return `<article class="notification-shift"><b>${t("الدوام")} ${index + 1}</b><div><span><i class="fa-regular fa-clock"></i>${formatTime(item.from)} — ${formatTime(item.to)}</span><span><i class="fa-solid fa-location-dot"></i>${branchName(item.branchId)}</span></div>${translatedTasks(item).length ? `<p><i class="fa-regular fa-clipboard"></i>${translatedTasks(item).map(esc).join(" + ")}</p>` : ""}</article>`;
+}
+function notificationNotes(item) {
+  const values = (item.notes || []).map(note => language === "en" ? (note.translation || note.text) : note.text).filter(Boolean);
+  return values.length ? `<section class="notification-notes"><b><i class="fa-regular fa-message"></i>${t("ملاحظات")}</b>${values.map(value => `<p>${esc(value)}</p>`).join("")}</section>` : "";
+}
+function notificationLeaveCard(item) {
+  if (!item?.leave) return "";
+  const leave = item.leave;
+  return `<section class="notification-leave"><i class="fa-solid fa-umbrella-beach"></i><div><b>${leaveTypeText(leave)}</b>${leave.duration === "half" ? `<small>${t("نصف يوم")}</small>` : ""}</div></section>`;
+}
+function notificationTitle(item) {
+  if(item?.type==="deduction")return language==="en"?"Salary deduction letter":"كتاب خصم من الراتب";
+  if (item?.type === "attendance_alert") return language === "en" ? "Attendance alert" : "تنبيه الحضور والانصراف";
+  if (!item?.leave) return t("تفاصيل دوامك");
+  return t(item.leave.duration === "half" && item.shifts?.length ? "إجازتك ودوامك غداً" : "إجازتك غداً");
+}
+function notificationDetails(item) {
+  if(item?.type==="deduction")return `<div class="deduction-notification-details"><p><b>${language==="en"?"Amount:":"المبلغ:"}</b> ${esc(item.amount)} د.ك</p><p><b>${language==="en"?"Reason:":"سبب الخصم:"}</b> ${esc(item.reason)}</p><p><b>${language==="en"?"Deduction letter:":"كتاب الخصم:"}</b></p><div class="deduction-file-actions"><button data-deduction-download="${esc(item.id)}">${language==="en"?"Download PDF":"تحميل PDF"}</button><button data-deduction-share="${esc(item.id)}">${language==="en"?"Share":"مشاركة"}</button></div></div>`;
+  if (item?.type === "attendance_alert") return `<div class="attendance-alert-message">${esc(item.message || "تنبيه الحضور والانصراف")}</div>`;
+  return `<div class="notification-details">${notificationLeaveCard(item)}${(item.shifts || []).map(notificationShiftCard).join("")}${notificationNotes(item)}</div>`;
+}
+function showTomorrowSchedulePopup(item = tomorrowNotification()) {
+  if (!item || tomorrowPopupShown) return;
+  tomorrowPopupShown = true;
+  $("#portal-modal").innerHTML = `<div class="portal-modal-backdrop schedule-alert-backdrop"><section class="portal-modal schedule-alert-modal ${item.leave ? "leave-alert" : ""}" role="dialog" aria-modal="true"><div class="schedule-alert-icon"><i class="fa-solid ${item.leave ? "fa-umbrella-beach" : "fa-bell"}"></i></div><span>${t(item.leave ? "تم تسجيل إجازتك في الجدول" : "تم نشر جدول جديد")}</span><h2>${notificationTitle(item)}</h2><p class="schedule-alert-date">${esc(localizeStored(item.dayName || ""))} · ${esc(item.scheduleDate || "")}</p>${notificationDetails(item)}<button type="button" class="schedule-alert-close">${t("إغلاق")}</button></section></div>`;
+  const close = () => $("#portal-modal").innerHTML = "";
+  $(".schedule-alert-close").onclick = close;
+  $(".schedule-alert-backdrop").onclick = event => { if (event.target.classList.contains("schedule-alert-backdrop")) close(); };
+}
+async function showDeviceNotification(item) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  if (item?.type === "attendance_alert" || item?.type === "deduction") {
+    try {
+      const registration = await navigator.serviceWorker?.ready;
+      await registration?.showNotification(notificationTitle(item), { body: item.type==="deduction"?`${item.amount} د.ك · ${item.reason}`:item.message || "تنبيه الحضور والانصراف", icon: "fingerprint-icon-192.png", badge: "fingerprint-icon-192.png", tag: item.id, data: { url: "./?view=notifications" } });
+    } catch {}
+    return;
+  }
+  const firstShift = item.shifts?.[0];
+  const leaveText = item.leave ? `${leaveTypeText(item.leave)}${item.leave.duration === "half" ? ` · ${t("نصف يوم")}` : ""}` : "";
+  const shiftText = firstShift ? `${formatTime(firstShift.from)} — ${formatTime(firstShift.to)} · ${branchName(firstShift.branchId)}` : "";
+  const body = [leaveText, shiftText].filter(Boolean).join(" · ") || t("تفاصيل دوامك");
+  try {
+    const registration = await navigator.serviceWorker?.ready;
+    await registration?.showNotification(notificationTitle(item), { body, icon: "fingerprint-icon-192.png", badge: "fingerprint-icon-192.png", tag: item.id, data: { url: "./?view=notifications" } });
+  } catch {}
 }
 function employeeAssignments() {
   const today = dateKey(new Date());
   const schedule = publishedSchedules.find(item => item.dateKey === today) || publishedSchedules.find(item => item.dateKey >= today) || null;
   return { schedule, items: Object.values(schedule?.assignments || {}).filter(item => item.employeeId === employee?.id).sort((a, b) => String(a.from).localeCompare(String(b.from))) };
 }
+function weeklyLeaveDays(leave) {
+  if (Array.isArray(leave?.weeklyDays) && leave.weeklyDays.length) return [...new Set(leave.weeklyDays.map(Number))];
+  return Number.isInteger(Number(leave?.weeklyDay)) ? [Number(leave.weeklyDay)] : [];
+}
+function leaveForToday() {
+  const today = dateKey(new Date());
+  const weekday = new Date(`${today}T12:00:00`).getDay();
+  return employeeLeaves.filter(leave => {
+    if (leave.type === "weekly") return weeklyLeaveDays(leave).includes(weekday);
+    return leave.startDate <= today && leave.endDate >= today && !(leave.skipEnabled && Number(leave.skipWeekday) === weekday);
+  }).sort((a, b) => (b.duration === "full") - (a.duration === "full") || Number(b.updatedAt || b.createdAt || 0) - Number(a.updatedAt || a.createdAt || 0))[0] || null;
+}
+function leaveTypeText(leave) { return leave?.type === "weekly" ? t("إجازة أسبوعية") : leave?.type === "annual" ? t("إجازة سنوية") : leave?.type === "sick" ? t("إجازة مرضية") : t("إجازة"); }
+function leaveCard(leave) { return `<div class="leave-today-card"><i class="fa-solid fa-umbrella-beach"></i><div><b>${t("لديك إجازة اليوم")}</b><p>${leaveTypeText(leave)}${leave.duration === "half" ? ` · ${t("نصف يوم")}` : ""}</p></div></div>`; }
 function branchName(id) { return t(({ hawalli: "حولي", surra: "حولي", abu_al_hasaniya: "أبو الحصانية", abulhasania: "أبو الحصانية", yarmouk: "اليرموك" })[id] || id || ""); }
 function shiftCard(item, index) {
   const number = index === 0 ? t("الأول") : index === 1 ? t("الثاني") : index + 1;
-  return `<article class="shift-card"><b>${t("الدوام")} ${number}</b><div><span><i class="fa-regular fa-clock"></i><small>${t("الوقت")}</small><strong>${formatTime(item.from)} — ${formatTime(item.to)}</strong></span><span><i class="fa-solid fa-location-dot"></i><small>${t("الفرع")}</small><strong>${branchName(item.branchId)}</strong></span><span><i class="fa-regular fa-clipboard"></i><small>${t("المهام")}</small><strong>${(item.tasks || []).map(task => esc(localizeStored(task))).join(" + ")}</strong></span></div></article>`;
+  const tasks = language === "en"
+    ? (item.taskTranslations || []).map(value => value?.text || value).filter(Boolean)
+    : (item.tasks || []);
+  return `<article class="shift-card"><b>${t("الدوام")} ${number}</b><div><span><i class="fa-regular fa-clock"></i><small>${t("الوقت")}</small><strong>${formatTime(item.from)} — ${formatTime(item.to)}</strong></span><span><i class="fa-solid fa-location-dot"></i><small>${t("الفرع")}</small><strong>${branchName(item.branchId)}</strong></span><span><i class="fa-regular fa-clipboard"></i><small>${t("المهام")}</small><strong>${tasks.map(task => esc(language === "en" ? task : localizeStored(task))).join(" + ")}</strong></span></div></article>`;
 }
 function renderHome() {
   currentView = "home";
   const { schedule, items } = employeeAssignments();
+  const leave = leaveForToday();
   $("#pin-page").classList.add("hidden");
   $("#boot").classList.add("hidden");
   const app = $("#employee-app");
   app.classList.remove("hidden");
-  app.innerHTML = `<button id="open-settings" class="settings-button" aria-label="${t("الإعدادات")}"><i class="fa-solid fa-gear"></i></button><section class="employee-hero"><div class="profile-image">${employee.photoUrl || employee.photoDataUrl ? `<img src="${esc(employee.photoUrl || employee.photoDataUrl)}" alt="">` : `<span>${initials(employee.fullName)}</span>`}</div><div><small>${t("مرحباً بك")}</small><h1>${esc(employee.fullName)}</h1><p><i class="fa-regular fa-calendar-days"></i> ${schedule ? `${t("جدول دوام")} ${esc(localizeStored(schedule.dayName))}` : t("لا يوجد جدول منشور")}</p></div></section><section class="today-card"><header><div><span>${t("جدول الدوام")}</span><h2>${schedule ? `${esc(localizeStored(schedule.dayName))} · ${schedule.dateKey}` : t("بانتظار نشر الجدول")}</h2></div><i class="fa-regular fa-calendar-check"></i></header><div class="shifts">${items.length ? items.map(shiftCard).join("") : `<div class="no-shifts"><i class="fa-regular fa-calendar-xmark"></i><p>${t("لا توجد فترات دوام منشورة لك حاليًا.")}</p></div>`}</div></section><section class="fingerprint-area"><button id="fingerprint-button"><i class="fa-solid fa-fingerprint"></i></button><h2>${t("اضغط لتسجيل البصمة")}</h2><p id="fingerprint-status">${language === "en" ? "Attendance is recorded directly, as in the previous portal." : "يتم تسجيل وقت العملية مباشرة"}</p></section><nav class="bottom-nav"><button data-view="services"><i class="fa-solid fa-grip"></i><span>${t("خدمات")}</span></button><button class="active"><i class="fa-solid fa-fingerprint"></i><span>${t("البصمة")}</span></button><button data-view="notifications"><i class="fa-regular fa-bell"></i><span>${t("إشعارات")}</span></button></nav>`;
+  app.innerHTML = `<button id="open-settings" class="settings-button" aria-label="${t("الإعدادات")}"><i class="fa-solid fa-gear"></i></button><section class="employee-hero"><div class="profile-image">${employee.photoUrl || employee.photoDataUrl ? `<img src="${esc(employee.photoUrl || employee.photoDataUrl)}" alt="">` : `<span>${initials(employee.fullName)}</span>`}</div><div><small>${t("مرحباً بك")}</small><h1>${esc(employee.fullName)}</h1><p><i class="fa-regular fa-calendar-days"></i> ${leave ? t("إجازة اليوم") : schedule ? `${t("جدول دوام")} ${esc(localizeStored(schedule.dayName))}` : t("لا يوجد جدول منشور")}</p></div></section><section class="today-card"><header><div><span>${leave ? t("إجازة اليوم") : t("جدول الدوام")}</span><h2>${leave ? leaveTypeText(leave) : schedule ? `${esc(localizeStored(schedule.dayName))} · ${schedule.dateKey}` : t("بانتظار نشر الجدول")}</h2></div><i class="${leave ? "fa-solid fa-umbrella-beach" : "fa-regular fa-calendar-check"}"></i></header><div class="shifts">${leave ? leaveCard(leave) : items.length ? items.map(shiftCard).join("") : `<div class="no-shifts"><i class="fa-regular fa-calendar-xmark"></i><p>${t("لا توجد فترات دوام منشورة لك حاليًا.")}</p></div>`}</div></section><section class="fingerprint-area"><button id="fingerprint-button"><i class="fa-solid fa-fingerprint"></i></button><h2>${t("اضغط لتسجيل البصمة")}</h2><p id="fingerprint-status">${t("اختر الدخول أو الخروج ثم وجّه الكاميرا للباركود")}</p></section>${bottomNavigation("home")}`;
+  app.querySelector(".employee-hero h1").textContent=employeeName();
+  const avatar=app.querySelector(".profile-image span");if(avatar)avatar.textContent=initials(employeeName());
   $("#open-settings").onclick = renderSettings;
-  $("#fingerprint-button").onclick = recordAttendance;
-  document.querySelectorAll("[data-view]").forEach(button => button.onclick = () => renderUnderDevelopment(button.dataset.view));
+  $("#fingerprint-button").onclick = openPunchChooser;
+  bindBottomNavigation();
+  window.setTimeout(() => showTomorrowSchedulePopup(), 0);
 }
-function renderUnderDevelopment(view) {
-  currentView = view;
-  const title = view === "services" ? t("خدمات") : t("إشعارات");
-  $("#employee-app").innerHTML = `<div class="inner-page under-development"><header><button id="back-home">${language === "ar" ? "→" : "←"}</button><div><small>${t("بوابة الموظف")}</small><h1>${title}</h1></div></header><section><i class="fa-solid fa-wand-magic-sparkles"></i><h2>${t("قيد التطوير")}</h2></section></div>`;
-  $("#back-home").onclick = renderHome;
+function bottomNavigation(active) {
+  return `<nav class="bottom-nav"><button data-view="services" class="${active === "services" ? "active" : ""}"><i class="fa-solid fa-grip"></i><span>${t("خدمات")}</span></button><button data-view="home" class="${active === "home" ? "active" : ""}"><i class="fa-solid fa-fingerprint"></i><span>${t("البصمة")}</span></button><button data-view="notifications" class="${active === "notifications" ? "active" : ""}"><i class="fa-regular fa-bell"></i><span>${t("إشعارات")}</span>${notificationBadge()}</button></nav>`;
+}
+function bindBottomNavigation() {
+  document.querySelectorAll("[data-view]").forEach(button => button.onclick = () => {
+    if (button.dataset.view === "home") renderHome();
+    else if (button.dataset.view === "services") renderServices();
+    else renderNotifications();
+  });
+}
+function renderServices() {
+  currentView = "services";
+  $("#employee-app").innerHTML = `<div class="inner-page under-development nav-page"><header><div><small>${t("بوابة الموظف")}</small><h1>${t("خدمات")}</h1></div></header><section><i class="fa-solid fa-wand-magic-sparkles"></i><h2>${t("قيد التطوير")}</h2></section></div>${bottomNavigation("services")}`;
+  bindBottomNavigation();
+}
+async function markNotificationsRead() {
+  const unread = unreadNotifications();
+  if (!unread.length) return;
+  employeeNotifications = employeeNotifications.map(item => ({ ...item, read: true }));
+  updateAppBadge();
+  await Promise.all(unread.map(item => update(ref(db, `${ROOT}/employeeNotifications/${employee.id}/${item.id}`), { read: true, readAt: Date.now() }).catch(() => {})));
+}
+function notificationPermissionCard() {
+  if (!("Notification" in window)) return "";
+  const enabled = Notification.permission === "granted";
+  return `<section class="notification-permission ${enabled ? "enabled" : ""}"><i class="fa-solid ${enabled ? "fa-circle-check" : "fa-bell"}"></i><div><b>${enabled ? t("الإشعارات مفعّلة") : t("تفعيل إشعارات الجهاز")}</b><p>${enabled ? t("ستظهر هنا إشعارات الدوام والملاحظات الجديدة.") : t("فعّل الإشعارات لتصلك تنبيهات الجدول على جهازك.")}</p></div>${enabled ? "" : `<button id="enable-notifications">${t("تفعيل إشعارات الجهاز")}</button>`}</section>`;
+}
+function notificationTabItems(tab=notificationTab){
+  return [...employeeNotifications].filter(item=>tab==="unread"?(!item.read||visibleUnreadIds.has(item.id)):tab==="schedules"?item.type==="schedule":item.type!=="schedule").sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0));
+}
+function renderNotifications(resetTab = true) {
+  if(resetTab){notificationTab="unread";visibleUnreadIds=new Set();}
+  if(notificationTab==="unread")employeeNotifications.filter(item=>!item.read).forEach(item=>visibleUnreadIds.add(item.id));
+  const items=notificationTabItems();
+  currentView = "notifications";
+  $("#employee-app").innerHTML = `<div class="inner-page notifications-page nav-page"><header><div><small>${t("بوابة الموظف")}</small><h1>${t("إشعارات")}</h1></div></header><nav class="notification-tabs">${[["unread","غير مقروء","Unread"],["previous","الإشعارات السابقة","Past notifications"],["schedules","الدوامات السابقة","Past schedules"]].map(([key,ar,en])=>`<button data-notification-tab="${key}" class="${notificationTab===key?"active":""}">${language==="en"?en:ar}</button>`).join("")}</nav>${notificationPermissionCard()}<section class="notifications-list">${items.length ? items.map(item => `<article class="notification-card ${item.read ? "" : "unread"} ${item.leave ? "leave-notification" : ""} ${item.type === "attendance_alert" ? "attendance-alert-notification" : ""}"><header><div class="notification-card-icon"><i class="fa-solid ${item.type === "attendance_alert" ? "fa-triangle-exclamation" : item.leave ? "fa-umbrella-beach" : "fa-calendar-check"}"></i></div><div><span>${item.read ? "" : t("جديد")}</span><h2>${notificationTitle(item)}</h2><p>${esc(localizeStored(item.dayName || ""))} · ${esc(item.scheduleDate || "")}</p></div></header>${notificationDetails(item)}</article>`).join("") : `<div class="empty-notifications"><i class="fa-regular fa-bell-slash"></i><h2>${notificationTab==="unread"?(language==="en"?"No new notifications":"لا توجد إشعارات جديدة"):t("لا توجد إشعارات")}</h2><p>${language==="en"?"Please go to Past notifications or Past schedules to view earlier items.":"يرجى الانتقال للإشعارات السابقة أو الدوامات السابقة للاطلاع على كل ما سبق."}</p></div>`}</section></div>${bottomNavigation("notifications")}`;
+  bindBottomNavigation();
+  $("#enable-notifications")?.addEventListener("click", enableDeviceNotifications);
+  document.querySelectorAll("[data-notification-tab]").forEach(button=>button.onclick=()=>{notificationTab=button.dataset.notificationTab;visibleUnreadIds=new Set();renderNotifications(false);});
+  document.querySelectorAll("[data-deduction-download],[data-deduction-share]").forEach(button=>button.onclick=()=>openDeductionFile(button));
+  const visibleUnread=items.filter(item=>!item.read);
+  // Keep the visible unread cards until the next visit or tab change.
+  if(visibleUnread.length){
+
+    Promise.all(visibleUnread.map(item=>update(ref(db,`${ROOT}/employeeNotifications/${employee.id}/${item.id}`),{read:true,readAt:Date.now()}).then(()=>{item.read=true;}).catch(()=>{})));
+  }
+}
+async function openDeductionFile(button){
+  const id=button.dataset.deductionDownload||button.dataset.deductionShare,item=employeeNotifications.find(item=>item.id===id);
+  if(!item)return;button.disabled=true;
+  try{
+    const snapshot=await get(ref(db,`${ROOT}/deductionFiles/${String(item.id).replace(/^deduction-/,"")}`));
+    const dataUrl=snapshot.val()?.dataUrl;
+    if(!dataUrl?.startsWith("data:application/pdf"))throw new Error("تعذر تحميل ملف الكتاب.");
+    const blob=await (await fetch(dataUrl)).blob(),file=new File([blob],item.pdfFilename||"deduction.pdf",{type:"application/pdf"});
+    if(button.dataset.deductionShare&&navigator.canShare?.({files:[file]})){await navigator.share({files:[file],title:notificationTitle(item)});}
+    else {const url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download=file.name;link.click();setTimeout(()=>URL.revokeObjectURL(url),30000);}
+  }catch(error){if(error.name!=="AbortError")showToast(error.message||"تعذر تحميل الملف.");}finally{button.disabled=false;}
+}
+async function enableDeviceNotifications() {
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") throw new Error();
+    renderNotifications(false);
+  } catch { showToast(t("تعذر تفعيل الإشعارات من إعدادات المتصفح.")); }
 }
 
 function openPunchChooser() {
@@ -352,6 +570,15 @@ function scanBarcodeFrame() {
   }
   scanFrame = requestAnimationFrame(scanBarcodeFrame);
 }
+function showAttendanceProcessing() {
+  $("#portal-modal").innerHTML = `<div class="portal-modal-backdrop attendance-result-backdrop"><section class="attendance-result processing"><div class="attendance-spinner"><i class="fa-solid fa-qrcode"></i></div><span>${t("تسجيل البصمة")}</span><h2>${t("جارٍ تحليل الباركود...")}</h2><p>${language === "en" ? "Please wait a moment" : "يرجى الانتظار لحظة"}</p></section></div>`;
+}
+function showAttendanceResult(type, error = "") {
+  const success = !error;
+  const title = success ? (type === "checkIn" ? t("تم تسجيل بصمة الدخول بنجاح") : t("تم تسجيل بصمة الخروج بنجاح")) : (error || t("تعذر تسجيل البصمة عبر الباركود."));
+  $("#portal-modal").innerHTML = `<div class="portal-modal-backdrop attendance-result-backdrop"><section class="attendance-result ${success ? "success" : "failed"}"><div class="attendance-result-icon"><i class="fa-solid ${success ? "fa-check" : "fa-xmark"}"></i></div><span>${t("تسجيل البصمة")}</span><h2>${title}</h2><p>${success ? (type === "checkIn" ? (language === "en" ? "Welcome, your attendance has been saved." : "أهلاً بك، تم حفظ حضورك بنجاح.") : (language === "en" ? "Have a good day, your checkout has been saved." : "تم حفظ انصرافك بنجاح.")) : ""}</p><button type="button" class="attendance-result-close">${t("إغلاق")}</button></section></div>`;
+  $(".attendance-result-close").onclick = () => { $("#portal-modal").innerHTML = ""; };
+}
 function distanceMeters(a, b) {
   const rad = value => value * Math.PI / 180;
   const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
@@ -391,29 +618,6 @@ async function recordVerifiedAttendance(place, location) {
   showToast(message);
 }
 
-async function recordAttendance() {
-  const button = $("#fingerprint-button"), status = $("#fingerprint-status"), today = dateKey(new Date());
-  button.disabled = true;
-  status.textContent = language === "en" ? "Recording attendance..." : "جاري تسجيل البصمة...";
-  try {
-    const logsRef = ref(db, `${ROOT}/attendance/${today}/${employee.id}`);
-    const snap = await get(logsRef);
-    const count = snap.exists() ? Object.keys(snap.val()).length : 0;
-    const type = count % 2 === 0 ? "checkIn" : "checkOut";
-    const entry = push(logsRef);
-    await set(entry, { id: entry.key, employeeId: employee.id, type, timestamp: Date.now(), source: "employee-portal" });
-    const message = type === "checkIn" ? (language === "en" ? "Check-in recorded successfully" : "تم تسجيل الحضور بنجاح") : (language === "en" ? "Check-out recorded successfully" : "تم تسجيل الانصراف بنجاح");
-    status.textContent = message;
-    button.classList.add("success");
-    showToast(message);
-  } catch (error) {
-    status.textContent = `${language === "en" ? "Could not record attendance: " : "تعذر تسجيل البصمة: "}${error.message || ""}`;
-  } finally {
-    button.disabled = false;
-    setTimeout(() => button.classList.remove("success"), 1800);
-  }
-}
-
 function phoneField(number, dial, index, type) {
   return `<div class="settings-phone-row"><select name="${type}Dial">${dialOptions(dial || "+965")}</select><input name="${type}Phone" value="${esc(number || "")}" inputmode="numeric" maxlength="15" placeholder="${t("رقم الهاتف")}" ${type === "primary" ? "required" : ""}>${type === "alternate" ? `<button type="button" data-remove-phone="${index}" aria-label="${t("إغلاق")}">×</button>` : "<span></span>"}</div>`;
 }
@@ -425,12 +629,15 @@ function renderSettings() {
   const alternates = employee.alternatePhones || [];
   const relatives = employee.relatives || [];
   $("#employee-app").innerHTML = `<div class="inner-page settings-page"><header><button id="back-home">${language === "ar" ? "→" : "←"}</button><div><small>${t("الملف الشخصي")}</small><h1>${t("إعدادات بياناتي")}</h1></div><button id="portal-logout" class="portal-logout">${t("تسجيل الخروج")}</button></header><form id="settings-form"><section><h2>${t("الصورة والبيانات الأساسية")}</h2><label class="settings-photo"><input id="settings-photo" type="file" accept="image/*"><span>${employee.photoUrl || employee.photoDataUrl ? `<img src="${esc(employee.photoUrl || employee.photoDataUrl)}" alt="">` : `<i class="fa-solid fa-camera"></i>`}</span><b>${t("تغيير الصورة")}</b></label><div class="settings-grid"><label>${t("الاسم الكامل")}<input name="fullName" value="${esc(employee.fullName || "")}" required></label><label>${t("الرقم المدني")}<input name="civilId" value="${esc(employee.civilId || "")}" inputmode="numeric" maxlength="12" required></label><label>${t("الجنسية")}<select name="nationality"><option value="">${t("اختر الجنسية")}</option>${countries.map(([arabicName, englishName, , flag]) => `<option value="${arabicName}" ${employee.nationality === arabicName ? "selected" : ""}>${flag} ${language === "en" ? englishName : arabicName}</option>`).join("")}</select></label><label>${t("المسمى الوظيفي")}<input name="jobTitle" value="${esc(employee.jobTitle || "")}" required></label><label class="wide">${t("جهة العمل")}<input name="workEntity" value="${esc(localizeStored(employee.workEntity || ""))}" readonly></label></div></section><section><div class="settings-section-head"><h2>${t("أرقام الهاتف")}</h2><button type="button" id="add-alt-phone">＋ ${t("رقم احتياطي")}</button></div><label>${t("رقم الهاتف الشخصي")}${phoneField(employee.primaryPhone?.phone || employee.kuwaitPhone, employee.primaryPhone?.dialCode || "+965", 0, "primary")}</label><div id="settings-alternates">${alternates.map((phone, index) => phoneField(phone.phone, phone.dialCode, index, "alternate")).join("")}</div></section><section><div class="settings-section-head"><h2>${t("أقرب الأشخاص")}</h2><button type="button" id="add-relative">＋ ${t("إضافة شخص")}</button></div><div id="settings-relatives">${relatives.map(relativeRow).join("")}</div></section><p id="settings-message"></p><button class="save-settings">${t("حفظ بياناتي")}</button></form></div>`;
+  const nameInput=$("#settings-form [name='fullName']"),nameLabel=nameInput.closest("label");
+  nameInput.name="fullNameAr";nameInput.value=employee.fullNameAr||employee.fullName||"";nameLabel.firstChild.textContent=language==="en"?"Name in Arabic":"اسم الموظف بالعربي";
+  nameLabel.insertAdjacentHTML("afterend",`<label>${language==="en"?"Name in English":"اسم الموظف بالإنجليزي"}<input name="fullNameEn" dir="ltr" value="${esc(employee.fullNameEn||"")}" required></label>`);
   bindSettingsEvents();
 }
 function bindSettingsEvents() {
   bindNumeric($("#settings-form"));
   $("#back-home").onclick = renderHome;
-  $("#portal-logout").onclick = () => { sessionStorage.removeItem("rakaezEmployeeSession"); employee = null; showLogin(); };
+  $("#portal-logout").onclick = () => { stopNotificationListener?.(); stopNotificationListener = null; localStorage.removeItem("rakaezEmployeeSession"); sessionStorage.removeItem("rakaezEmployeeSession"); employee = null; employeeNotifications = []; tomorrowPopupShown = false; updateAppBadge(); showLogin(); };
   $("#settings-photo").onchange = event => { const file = event.target.files[0]; if (file) $(".settings-photo span").innerHTML = `<img src="${URL.createObjectURL(file)}" alt="">`; };
   $("#add-alt-phone").onclick = () => { $("#settings-alternates").insertAdjacentHTML("beforeend", phoneField("", "+965", $("#settings-alternates").children.length, "alternate")); bindSettingRows(); };
   $("#add-relative").onclick = () => { $("#settings-relatives").insertAdjacentHTML("beforeend", relativeRow({}, $("#settings-relatives").children.length)); bindSettingRows(); };
@@ -454,7 +661,7 @@ async function saveSettings(event) {
     const primary = $("[name='primaryPhone']").closest(".settings-phone-row");
     const alternatePhones = [...document.querySelectorAll("#settings-alternates .settings-phone-row")].map(row => ({ dialCode: row.querySelector("select").value, phone: onlyDigits(row.querySelector("input").value) })).filter(item => item.phone);
     const relatives = [...document.querySelectorAll("#settings-relatives .relative-settings-row")].map(row => ({ dialCode: row.querySelector("select").value, phone: onlyDigits(row.querySelector(".settings-phone-row input").value), relation: row.querySelector("[name='relation']").value.trim() })).filter(item => item.phone);
-    const changes = { fullName: data.fullName.trim(), civilId: onlyDigits(data.civilId), nationality: data.nationality || "", jobTitle: data.jobTitle.trim(), primaryPhone: { dialCode: primary.querySelector("select").value, phone: onlyDigits(primary.querySelector("input").value) }, alternatePhones, relatives, photoUrl, profileCompleted: true, profileUpdatedAt: Date.now() };
+    const changes = { fullName: data.fullNameAr.trim(), fullNameAr: data.fullNameAr.trim(), fullNameEn: data.fullNameEn.trim(), civilId: onlyDigits(data.civilId), nationality: data.nationality || "", jobTitle: data.jobTitle.trim(), primaryPhone: { dialCode: primary.querySelector("select").value, phone: onlyDigits(primary.querySelector("input").value) }, alternatePhones, relatives, photoUrl, profileCompleted: true, profileUpdatedAt: Date.now() };
     await update(ref(db, `${ROOT}/employees/${employee.id}`), changes);
     employee = { ...employee, ...changes };
     showToast(t("تم حفظ بياناتك بنجاح")); renderHome();

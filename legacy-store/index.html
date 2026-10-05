@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#173f32">
+  <title>إدارة منصة البيع</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">ز</span>
+      <div><strong>إدارة منصة البيع</strong><small>التين والزيتون</small></div>
+    </div>
+    <div class="top-actions">
+      <button class="primary" id="addProduct">＋ إضافة منتج جديد</button>
+      <button class="secondary" id="addCategory">＋ إضافة قسم جديد</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="intro">
+      <div>
+        <span class="eyebrow">لوحة المحتوى</span>
+        <h1>رتّب الأقسام والمنتجات وعدّل بياناتها</h1>
+        <p>اسحب من المقبض لتغيير الترتيب. يظهر خط رمادي واضح في موضع الإفلات.</p>
+      </div>
+      <div class="stats">
+        <div><strong id="categoryCount">0</strong><span>قسم</span></div>
+        <div><strong id="productCount">0</strong><span>منتج</span></div>
+      </div>
+    </section>
+
+    <section class="notice">
+      <div>ⓘ</div>
+      <p><strong>الحفظ هنا آمن ومحلي.</strong> هذه صفحة GitHub Pages ثابتة، لذلك لا تضع رمز GitHub داخلها. بعد التعديل اضغط «تصدير تحديث الموقع» وارفع الملفات الناتجة بنفسك.</p>
+    </section>
+
+    <section class="toolbar">
+      <button id="saveDraft">حفظ المسودة</button>
+      <button id="exportData" class="export">تنزيل تحديث الموقع ZIP</button>
+      <label class="file-button">استيراد JSON<input id="importData" type="file" accept=".json,application/json" multiple></label>
+      <button id="resetData" class="danger-link">إلغاء المسودة والعودة لبيانات الموقع</button>
+      <span id="saveState">تم تحميل بيانات الموقع</span>
+    </section>
+
+    <section id="categoryList" class="category-list" aria-live="polite"></section>
+  </main>
+
+  <dialog id="categoryDialog">
+    <form method="dialog" id="categoryForm" class="dialog-card">
+      <header><div><span class="eyebrow">القسم</span><h2 id="categoryDialogTitle">إضافة قسم جديد</h2></div><button type="button" class="icon-btn" data-close-dialog="categoryDialog" aria-label="إغلاق">×</button></header>
+      <input id="categoryId" type="hidden">
+      <label>اسم القسم بالعربي<input id="categoryNameAr" required maxlength="100"></label>
+      <label>اسم القسم بالإنجليزي<input id="categoryNameEn" required maxlength="100" dir="ltr"></label>
+      <footer><button type="button" data-close-dialog="categoryDialog">إلغاء</button><button type="submit" value="default" class="primary">حفظ القسم</button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="productDialog">
+    <form method="dialog" id="productForm" class="dialog-card product-dialog">
+      <header><div><span class="eyebrow">المنتج</span><h2 id="productDialogTitle">إضافة منتج جديد</h2></div><button type="button" class="icon-btn" data-close-dialog="productDialog" aria-label="إغلاق">×</button></header>
+      <input id="productId" type="hidden">
+      <div class="form-grid">
+        <label>القسم<select id="productCategory" required></select></label>
+        <label>سعر البيع د.ك<input id="productPrice" type="number" min="0" step="0.001" required dir="ltr"></label>
+        <label>اسم المنتج بالعربي<input id="productNameAr" required maxlength="160"></label>
+        <label>اسم المنتج بالإنجليزي<input id="productNameEn" required maxlength="160" dir="ltr"></label>
+        <label>الوصف العربي<textarea id="productDescriptionAr" rows="4" maxlength="800"></textarea></label>
+        <label>الوصف الإنجليزي<textarea id="productDescriptionEn" rows="4" maxlength="800" dir="ltr"></textarea></label>
+      </div>
+      <section class="image-editor">
+        <div class="section-title"><div><h3>صور المنتج</h3><p>الصورة الأولى هي الرئيسية. يمكن إضافة أكثر من صورة وحذف أو تقديم أي صورة.</p></div><label class="file-button">إضافة صور<input id="productImages" type="file" accept="image/*" multiple></label></div>
+        <div class="url-add"><input id="imageUrl" type="url" placeholder="أو الصق رابط صورة https://..." dir="ltr"><button type="button" id="addImageUrl">إضافة الرابط</button></div>
+        <div id="imageList" class="image-list"></div>
+      </section>
+      <footer><button type="button" data-close-dialog="productDialog">إلغاء</button><button type="submit" value="default" class="primary">حفظ المنتج</button></footer>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status"></div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
